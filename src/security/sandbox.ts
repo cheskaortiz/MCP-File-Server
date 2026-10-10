@@ -4,7 +4,7 @@ import path from "node:path";
 /** Error whose message is safe to show to an MCP client. */
 export class SandboxError extends Error {
   constructor(
-    public readonly code: "INVALID_PATH" | "OUTSIDE_WORKSPACE" | "NOT_FOUND",
+    public readonly code: "INVALID_PATH" | "OUTSIDE_WORKSPACE" | "NOT_FOUND" | "PROTECTED",
     message: string,
   ) {
     super(message);
