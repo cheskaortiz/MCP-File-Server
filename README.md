@@ -8,7 +8,7 @@ A sandboxed MCP file server built with TypeScript. Agents can read and modify fi
 |---|---|
 | M1 — Skeleton | Verified locally |
 | M2 — Sandbox and core tools | Verified locally: 129 tests passed across 11 files; typecheck and build passed |
-| M3 — HTTP transport and authentication | HTTP health check, bearer-token authentication, MCP initialization, and `tools/list` verified locally. Tunnel, PM2 deployment, and HTTP Inspector verification are pending |
+| M3 — HTTP transport and authentication | Verified locally: HTTP health check, bearer-token authentication, MCP initialization, and `tools/list` passed. PM2 operation, ngrok tunnel, and HTTP MCP Inspector tool testing verified |
 | M4 — Handoff files and protocol | Not yet completed as a milestone. Handoff-file deletion protection already exists in M2 |
 | M5 — Multi-session demonstration | Not yet completed |
 
@@ -21,7 +21,10 @@ A sandboxed MCP file server built with TypeScript. Agents can read and modify fi
 - Unauthenticated `POST /mcp` — HTTP 401
 - Authenticated MCP initialization — HTTP 200
 - Authenticated `tools/list` — HTTP 200; 9 tools returned
-- Public tunnel, PM2 deployment, and MCP Inspector over HTTP — pending
+- PM2 process management — verified; process online
+- ngrok public tunnel — connected and HTTP MCP requests tested
+- HTTP MCP Inspector — connected; tool tests passed
+- `git_status` — verified clean repository and untracked-file detection
 
 These results document local tests only. They do not establish that the server has been deployed publicly.
 
@@ -157,7 +160,14 @@ Suggested checks:
 - Test `str_replace`.
 - Try a path such as `../` and verify that the sandbox rejects it.
 
-HTTP Inspector testing remains pending and should be documented after it has been performed.
+For HTTP Inspector testing, connect to the running HTTP server using its configured endpoint and bearer-token authentication. The following tools have been tested successfully:
+
+- `list_files` — listed workspace entries.
+- `read_file` — read a sample Markdown file.
+- `search_files` — found Markdown files by pattern.
+- `search_code` — found matching text in a Markdown file.
+- `repo_map` — returned the workspace tree and file counts.
+- `git_status` — verified both a clean repository and untracked-file detection.
 
 ## Tool Catalog
 
