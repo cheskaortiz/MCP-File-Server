@@ -1,6 +1,6 @@
 {
   "name": "mcp-file-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Secure sandboxed MCP file server (Agentic AI II midterm)",
   "private": true,
   "type": "module",
@@ -11,7 +11,10 @@
     "dev": "tsx src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "inspect": "npx @modelcontextprotocol/inspector node dist/server.js"
+    "inspect": "npx @modelcontextprotocol/inspector node dist/server.js",
+    "start:http": "node dist/httpServer.js",
+    "dev:http": "tsx src/httpServer.ts",
+    "gen-token": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('hex'))\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
