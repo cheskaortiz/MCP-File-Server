@@ -11,7 +11,7 @@ export interface CreateServerOptions {
 export async function createServer(workspaceRoot: string, options: CreateServerOptions = {}): Promise<McpServer> {
   const sandbox = await createSandbox(workspaceRoot);
   const audit = options.auditLogPath ? createFileAuditLog(options.auditLogPath) : noopAudit;
-  const server = new McpServer({ name: "mcp-file-server", version: "0.2.0" });
+  const server = new McpServer({ name: "mcp-file-server", version: "0.3.0" });
   registerAllTools(server, { sandbox, audit });
   return server;
 }
