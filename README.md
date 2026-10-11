@@ -62,12 +62,17 @@ If `.env` already exists, do not overwrite it. Keep `.env` private and do not co
 |---|---|---|
 | `WORKSPACE_ROOT` | `./workspace` | The root directory that agents may access |
 | `AUDIT_LOG_PATH` | `./logs/audit.log` | Audit log for mutating operations; keep outside the workspace |
-| `MCP_AUTH_TOKEN` | None | Bearer token required to access the HTTP MCP endpoint |
+| `MCP_AUTH_TOKEN` | None | Required in `static` and `both` modes; accepted as an alternate credential in `both` mode |
 | `MCP_HOST` | `127.0.0.1` | HTTP server bind address |
 | `MCP_PORT` | `3000` | HTTP server port |
 | `MCP_ALLOWED_HOSTS` | Empty | Optional comma-separated allow-list of HTTP Host header values |
+| `MCP_AUTH_MODE` | `static` | HTTP authentication mode: `static`, `oauth`, or `both` |
+| `MCP_OAUTH_ISSUER_URL` | None | Required for OAuth modes; public HTTPS issuer origin without a path |
+| `MCP_OAUTH_RESOURCE_URL` | None | Required for OAuth modes; public HTTPS MCP resource URL, normally ending in `/mcp` |
+| `MCP_OAUTH_OWNER_PASSWORD` | None | Required for OAuth modes; consent password of at least 32 characters |
+| `MCP_OAUTH_STORAGE_DIR` | None | Required for OAuth modes; absolute persistent directory outside `WORKSPACE_ROOT` |
 
-Relative paths are resolved according to the application's configuration. Configure a strong `MCP_AUTH_TOKEN` before starting the HTTP server.
+`MCP_AUTH_TOKEN` is required in `static` (the default) and `both` modes; it is optional in `oauth` mode. Relative paths are resolved according to the application's configuration.
 
 ## Running the Server
 
@@ -141,6 +146,25 @@ Authorization: Bearer <your-token>
 MCP clients must use compatible request headers. For the tested initialization request, the `Accept` header included both `application/json` and `text/event-stream`.
 
 Keep the server bound to localhost during local development. Do not expose it publicly until authentication, Host header validation, tunnel configuration, and deployment security have been reviewed.
+
+### Remote OAuth connector
+
+For Claude Desktop's remote custom connector, the OAuth endpoints and MCP resource must be reachable at stable public HTTPS URLs. The app itself still listens on HTTP; terminate TLS at a trusted HTTPS reverse proxy or tunnel and forward requests to the local HTTP port. Configure the proxy/tunnel to preserve the public `Host` header, or include the forwarded host in `MCP_ALLOWED_HOSTS`.
+
+Set the following in `.env`:
+
+```dotenv
+MCP_AUTH_MODE=oauth
+MCP_OAUTH_ISSUER_URL=https://your-public-host.example
+MCP_OAUTH_RESOURCE_URL=https://your-public-host.example/mcp
+MCP_OAUTH_OWNER_PASSWORD=replace-with-a-random-password-of-at-least-32-characters
+MCP_OAUTH_STORAGE_DIR=C:\path\outside\workspace\oauth-state
+MCP_ALLOWED_HOSTS=your-public-host.example
+```
+
+`MCP_OAUTH_ISSUER_URL` must be the public HTTPS origin only. `MCP_OAUTH_RESOURCE_URL` identifies the protected MCP endpoint and must match the public URL used by the connector. OAuth mode does not require `MCP_AUTH_TOKEN`; set `MCP_AUTH_MODE=both` to allow either OAuth access tokens or the existing static token. The default `static` mode is unchanged.
+
+The SDK serves authorization-server metadata, protected-resource metadata, dynamic client registration, token, revocation, and authorization endpoints. The consent page asks for `MCP_OAUTH_OWNER_PASSWORD`; client and token state persists in `MCP_OAUTH_STORAGE_DIR`. Keep that directory out of the served workspace and protect its backups. The issuer/resource URLs must remain stable and match the URLs configured in the HTTPS proxy or tunnel.
 
 ## MCP Inspector
 

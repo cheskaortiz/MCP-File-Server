@@ -1,16 +1,33 @@
 import http from "node:http";
+import express from "express";
+import type { Request, RequestHandler, Response } from "express";
+import {
+  getOAuthProtectedResourceMetadataUrl,
+  mcpAuthRouter,
+} from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer as createMcpServer } from "../createServer.js";
 import { isAuthorized } from "./auth.js";
+import type { HttpAuthMode } from "../config/http.js";
+import type { FileOAuthProvider } from "../oauth/provider.js";
 
 export const DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MCP_PATH = "/mcp";
+
+export interface HttpOAuthOptions {
+  provider: FileOAuthProvider;
+  issuerUrl: URL;
+  resourceUrl: URL;
+}
 
 export interface HttpAppOptions {
   workspaceRoot: string;
   auditLogPath?: string;
   /** Bearer token every /mcp request must present. Never logged. */
-  authToken: string;
+  authMode?: HttpAuthMode;
+  authToken?: string;
+  oauth?: HttpOAuthOptions;
   /** Optional Host-header allow-list (extra defence against DNS rebinding). */
   allowedHosts?: readonly string[];
   maxBodyBytes?: number;
@@ -104,13 +121,91 @@ export function createHttpApp(options: HttpAppOptions): http.Server {
   const log = options.log ?? ((line: string) => console.log(line));
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const allowedHosts = options.allowedHosts ?? [];
+  const authMode = options.authMode ?? "static";
+  if (authMode !== "oauth" && !options.authToken) {
+    throw new Error("authToken is required for static or both authentication mode.");
+  }
+  if (authMode !== "static" && !options.oauth) {
+    throw new Error("OAuth provider and URLs are required when OAuth authentication is enabled.");
+  }
+  const app = express();
+  app.disable("x-powered-by");
+  app.set("trust proxy", "loopback");
 
-  async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  app.use((req, res, next) => {
     const started = Date.now();
     const pathname = safePathname(req.url);
     res.on("finish", () => {
       log(`${new Date().toISOString()} ${req.method ?? "?"} ${pathname} ${res.statusCode} ${Date.now() - started}ms`);
     });
+
+    if (allowedHosts.length > 0 && !hostAllowed(req.headers.host, allowedHosts)) {
+      rpcError(res, 403, -32000, "Forbidden host.");
+      return;
+    }
+
+    if (pathname === "/healthz" && (req.method === "GET" || req.method === "HEAD")) {
+      sendJson(res, 200, { status: "ok" });
+      return;
+    }
+
+    next();
+  });
+
+  if (options.oauth) {
+    app.use(
+      mcpAuthRouter({
+        provider: options.oauth.provider,
+        issuerUrl: options.oauth.issuerUrl,
+        resourceServerUrl: options.oauth.resourceUrl,
+      }),
+    );
+
+    app.post(
+      "/oauth/consent",
+      express.urlencoded({ extended: false, limit: "16kb" }),
+      (req, res) => {
+        const csrf = typeof req.body?.csrf === "string" ? req.body.csrf : "";
+        const password = typeof req.body?.password === "string" ? req.body.password : "";
+        const decision = typeof req.body?.decision === "string" ? req.body.decision : "";
+        options.oauth!.provider.handleConsent(csrf, password, decision, res).catch((err: unknown) => {
+          console.error("OAuth consent error:", err instanceof Error ? err.message : "unknown error");
+          if (!res.headersSent) res.status(500).send("Unable to process the authorization request.");
+        });
+      },
+    );
+  }
+
+  const oauthBearerAuth: RequestHandler | undefined = options.oauth
+    ? requireBearerAuth({
+        verifier: options.oauth.provider,
+        expectedResource: options.oauth.resourceUrl,
+        resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(options.oauth.resourceUrl),
+      })
+    : undefined;
+
+  app.use((req, res, next) => {
+    if (
+      authMode !== "oauth" &&
+      options.authToken &&
+      isAuthorized(req.headers.authorization, options.authToken)
+    ) {
+      next();
+      return;
+    }
+
+    if (oauthBearerAuth) {
+      oauthBearerAuth(req, res, next);
+      return;
+    }
+
+    rpcError(res, 401, -32001, "Unauthorized.", {
+      "WWW-Authenticate": 'Bearer realm="mcp-file-server"',
+    });
+  });
+
+  async function handle(req: Request, res: Response): Promise<void> {
+    const pathname = safePathname(req.url);
 
     if (allowedHosts.length > 0 && !hostAllowed(req.headers.host, allowedHosts)) {
       rpcError(res, 403, -32000, "Forbidden host.");
@@ -124,7 +219,10 @@ export function createHttpApp(options: HttpAppOptions): http.Server {
     }
 
     // Authentication happens BEFORE routing, body parsing, or any MCP code.
-    if (!isAuthorized(req.headers.authorization, options.authToken)) {
+    if (
+      !req.auth &&
+      (!options.authToken || !isAuthorized(req.headers.authorization, options.authToken))
+    ) {
       rpcError(res, 401, -32001, "Unauthorized.", { "WWW-Authenticate": 'Bearer realm="mcp-file-server"' });
       return;
     }
@@ -164,10 +262,12 @@ export function createHttpApp(options: HttpAppOptions): http.Server {
     await transport.handleRequest(req, res, parsed);
   }
 
-  return http.createServer((req, res) => {
+  app.use((req, res) => {
     handle(req, res).catch((err: unknown) => {
       console.error("Unhandled HTTP error:", err instanceof Error ? err.message : "unknown error");
       rpcError(res, 500, -32603, "Internal server error.");
     });
   });
+
+  return http.createServer(app);
 }
