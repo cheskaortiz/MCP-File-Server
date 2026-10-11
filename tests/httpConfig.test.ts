@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import { ConfigError, isLoopbackHost, loadHttpConfig } from "../src/config/http.js";
 import { isAuthorized } from "../src/http/auth.js";
 
@@ -42,6 +43,47 @@ describe("loadHttpConfig", () => {
   it("parses the host allow-list (trimmed, lower-cased, empties dropped)", () => {
     const c = loadHttpConfig({ MCP_AUTH_TOKEN: GOOD, MCP_ALLOWED_HOSTS: " Abc.ngrok-free.app , ,localhost " });
     expect(c.allowedHosts).toEqual(["abc.ngrok-free.app", "localhost"]);
+  });
+
+  it("defaults authentication mode to static", () => {
+    expect(loadHttpConfig({ MCP_AUTH_TOKEN: GOOD }).authMode).toBe("static");
+  });
+
+  it("allows OAuth mode without a static token and requires valid OAuth settings", () => {
+    const c = loadHttpConfig({
+      MCP_AUTH_MODE: "oauth",
+      MCP_OAUTH_ISSUER_URL: "https://auth.example.test",
+      MCP_OAUTH_RESOURCE_URL: "https://files.example.test/mcp",
+      MCP_OAUTH_OWNER_PASSWORD: "owner-password-that-is-at-least-32-chars",
+      MCP_OAUTH_STORAGE_DIR: path.resolve("oauth-state"),
+    });
+    expect(c.authToken).toBeUndefined();
+    expect(c.oauth?.issuerUrl.href).toBe("https://auth.example.test/");
+    expect(c.oauth?.resourceUrl.href).toBe("https://files.example.test/mcp");
+
+    expect(() => loadHttpConfig({ MCP_AUTH_MODE: "oauth" })).toThrow(ConfigError);
+  });
+
+  it("requires both credentials when authentication mode is both", () => {
+    const oauthEnv = {
+      MCP_AUTH_MODE: "both",
+      MCP_OAUTH_ISSUER_URL: "https://auth.example.test",
+      MCP_OAUTH_RESOURCE_URL: "https://files.example.test/mcp",
+      MCP_OAUTH_OWNER_PASSWORD: "owner-password-that-is-at-least-32-chars",
+      MCP_OAUTH_STORAGE_DIR: path.resolve("oauth-state"),
+    };
+    expect(() => loadHttpConfig(oauthEnv)).toThrow(/MCP_AUTH_TOKEN/);
+    expect(loadHttpConfig({ ...oauthEnv, MCP_AUTH_TOKEN: GOOD }).authMode).toBe("both");
+  });
+
+  it("rejects invalid auth modes and non-HTTPS OAuth URLs", () => {
+    expect(() => loadHttpConfig({ MCP_AUTH_MODE: "unknown" })).toThrow(/MCP_AUTH_MODE/);
+    expect(() =>
+      loadHttpConfig({
+        MCP_AUTH_MODE: "oauth",
+        MCP_OAUTH_ISSUER_URL: "http://auth.example.test",
+      }),
+    ).toThrow(/HTTPS/);
   });
 
   it("recognises loopback hosts", () => {
