@@ -1,38 +1,36 @@
-# MCP File Server (Agentic AI II midterm)
+# MCP File Server
 
-A sandboxed MCP file server built with TypeScript. Agents can read and modify files inside a designated workspace through the Model Context Protocol (MCP).
+**Agentic AI II — Midterm Project**
+
+A sandboxed MCP (Model Context Protocol) file server built with TypeScript. It allows compatible AI clients to read, search, create, update, and delete files within a designated workspace through MCP tools.
+
+The project supports two transports:
+
+- **stdio:** For MCP clients that launch the server as a local process.
+- **Streamable HTTP:** For HTTP-based clients, including remote Claude Desktop connectors using OAuth.
+
+Security features include workspace sandboxing, input validation, authentication, audit logging, file-version checks, and handoff-file protection.
 
 ## Milestone Status
 
 | Milestone | Status |
 |---|---|
 | M1 — Skeleton | Verified locally |
-| M2 — Sandbox and core tools | Verified locally: 129 tests passed across 11 files; typecheck and build passed |
-| M3 — HTTP transport and authentication | Verified locally: HTTP health check, bearer-token authentication, MCP initialization, and `tools/list` passed. PM2 operation, ngrok tunnel, and HTTP MCP Inspector tool testing verified |
-| M4 — Handoff files and protocol | Not yet completed as a milestone. Handoff-file deletion protection already exists in M2 |
-| M5 — Multi-session demonstration | Not yet completed |
+| M2 — Sandbox and Core Tools | Previously verified: 129 tests passed across 11 files; typecheck and build passed |
+| M3 — HTTP Transport and Authentication | HTTP checks, PM2, ngrok, HTTP Inspector, and Claude Desktop connection tested locally |
+| M4 — Handoff Files and Protocol | Handoff-file protection implemented; automated cross-session handoff test passed |
+| M5 — Multi-Session Demonstration | Final demonstration pending |
 
-### M2 and M3 Local Verification Log
-
-- `npm.cmd run typecheck` — passed
-- `npm.cmd test` — 129 tests passed across 11 files
-- `npm.cmd run build` — passed
-- `GET /healthz` — HTTP 200
-- Unauthenticated `POST /mcp` — HTTP 401
-- Authenticated MCP initialization — HTTP 200
-- Authenticated `tools/list` — HTTP 200; 9 tools returned
-- PM2 process management — verified; process online
-- ngrok public tunnel — connected and HTTP MCP requests tested
-- HTTP MCP Inspector — connected; tool tests passed
-- `git_status` — verified clean repository and untracked-file detection
-
-These results document local tests only. They do not establish that the server has been deployed publicly.
+These statuses reflect recorded development results. Run the current tests before submission to confirm the final state.
 
 ## Prerequisites
 
 - Node.js 20.12 or later
 - npm
-- Git on PATH for Git-related functionality and tests
+- Git
+- Claude Desktop or another compatible MCP client for manual testing
+- ngrok for remote connection testing
+- PM2 (optional) for process management
 
 Check your installed versions:
 
@@ -42,78 +40,186 @@ npm -v
 git --version
 ```
 
-## Setup
+## Installation and Setup
 
-Install dependencies and prepare the local environment:
+### 1. Obtain the Repository
+
+Clone the repository using its actual URL:
+
+```powershell
+git clone <YOUR_REPOSITORY_URL>
+cd mcp-file-server
+```
+
+Replace `<YOUR_REPOSITORY_URL>` with the repository URL. If you already have the project, open its folder and skip the clone command.
+
+### 2. Install Dependencies
+
+From the project root, run:
 
 ```powershell
 npm.cmd install
+```
+
+### 3. Configure the Environment
+
+Create a local `.env` file from the example:
+
+```powershell
 Copy-Item .env.example .env
+```
+
+If `.env` already exists, do not overwrite it. Review its current settings instead.
+
+Keep `.env` private. Never commit real tokens, passwords, or OAuth credentials to Git.
+
+### 4. Verify the Installation
+
+Run the typecheck, test suite, and production build:
+
+```powershell
 npm.cmd run typecheck
 npm.cmd test
 npm.cmd run build
 ```
 
-If `.env` already exists, do not overwrite it. Keep `.env` private and do not commit it to Git.
+Use `npm.cmd` in Windows PowerShell if the execution policy blocks `npm.ps1`.
+
+## Workspace Configuration
+
+The workspace is the local directory that the MCP tools are allowed to access, subject to the server's security rules. Its location is determined by `WORKSPACE_ROOT` in `.env`.
+
+The default is `./workspace`, relative to the application's configured working directory.
+
+### Use the Repository Workspace
+
+```dotenv
+WORKSPACE_ROOT=./workspace
+```
+
+This uses the `workspace/` directory included in the repository, which contains sample files for demonstrations.
+
+Example:
+
+```text
+mcp-file-server/
+├── src/
+├── tests/
+└── workspace/
+    ├── .gitkeep
+    └── sample-projects/
+        ├── README.md
+        └── index.js
+```
+
+### Use a Separate Local Workspace
+
+You can use a separate folder for assignments, notes, and other test files without mixing them with the source code.
+
+For example:
+
+```text
+Desktop/
+├── mcp-file-server/
+│   └── workspace/
+│       └── sample-projects/
+└── mcp-test-workspace/
+    ├── assignment.txt
+    ├── lecture-notes.txt
+    └── PROJECT_STATE.md
+```
+
+Set `WORKSPACE_ROOT` to the actual path:
+
+```dotenv
+WORKSPACE_ROOT=C:/Users/your-username/Desktop/mcp-test-workspace
+```
+
+Replace `your-username` with the appropriate Windows account name, and make sure the directory exists.
+
+**Important:** Only the directory configured by `WORKSPACE_ROOT` is used as the active workspace. If you change it, restart the server and verify the result with `list_files`.
+
+Use a dedicated workspace instead of granting access to your entire user directory or system directory.
 
 ## Environment Variables
 
+Configure the variables required by the selected server mode.
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `WORKSPACE_ROOT` | `./workspace` | The root directory that agents may access |
+| `WORKSPACE_ROOT` | `./workspace` | Directory accessible through MCP tools |
 | `AUDIT_LOG_PATH` | `./logs/audit.log` | Audit log for mutating operations; keep outside the workspace |
-| `MCP_AUTH_TOKEN` | None | Required in `static` and `both` modes; accepted as an alternate credential in `both` mode |
 | `MCP_HOST` | `127.0.0.1` | HTTP server bind address |
 | `MCP_PORT` | `3000` | HTTP server port |
-| `MCP_ALLOWED_HOSTS` | Empty | Optional comma-separated allow-list of HTTP Host header values |
-| `MCP_AUTH_MODE` | `static` | HTTP authentication mode: `static`, `oauth`, or `both` |
-| `MCP_OAUTH_ISSUER_URL` | None | Required for OAuth modes; public HTTPS issuer origin without a path |
-| `MCP_OAUTH_RESOURCE_URL` | None | Required for OAuth modes; public HTTPS MCP resource URL, normally ending in `/mcp` |
-| `MCP_OAUTH_OWNER_PASSWORD` | None | Required for OAuth modes; consent password of at least 32 characters |
-| `MCP_OAUTH_STORAGE_DIR` | None | Required for OAuth modes; absolute persistent directory outside `WORKSPACE_ROOT` |
+| `MCP_ALLOWED_HOSTS` | Empty | Optional comma-separated allow-list of HTTP Host values |
+| `MCP_AUTH_MODE` | `static` | Authentication mode: `static`, `oauth`, or `both` |
+| `MCP_AUTH_TOKEN` | None | Required in `static` and `both` modes |
+| `MCP_OAUTH_ISSUER_URL` | None | Public HTTPS issuer origin; required for OAuth modes |
+| `MCP_OAUTH_RESOURCE_URL` | None | Public HTTPS MCP resource URL; required for OAuth modes |
+| `MCP_OAUTH_OWNER_PASSWORD` | None | OAuth consent password of at least 32 characters |
+| `MCP_OAUTH_STORAGE_DIR` | None | Absolute persistent directory outside `WORKSPACE_ROOT` |
 
-`MCP_AUTH_TOKEN` is required in `static` (the default) and `both` modes; it is optional in `oauth` mode. Relative paths are resolved according to the application's configuration.
+### Authentication Modes
+
+- **`static`** — uses a configured bearer token.
+- **`oauth`** — uses the OAuth flow and does not require `MCP_AUTH_TOKEN`.
+- **`both`** — accepts OAuth access tokens or the configured static token.
+
+Generate a token for static or combined authentication:
+
+```powershell
+npm.cmd run gen-token
+```
+
+Copy the generated value into `MCP_AUTH_TOKEN` in `.env`. The token must be at least 32 characters long.
+
+`MCP_ALLOWED_HOSTS` accepts host names, not complete URLs. Do not include `https://` or `/mcp`.
 
 ## Running the Server
 
-### Standard MCP Server (stdio)
+Choose the transport that matches your MCP client.
 
-Build the project and start the standard MCP server:
+### Option A: Standard MCP Server (stdio)
+
+Use stdio when a compatible client launches the server as a local process.
 
 ```powershell
 npm.cmd run build
 npm.cmd start
 ```
 
-This mode is intended for MCP clients that launch the server as a local process using standard input and output.
+This starts the standard entry point, `dist/server.js`. Configure the local client to launch this server according to the client's instructions.
 
-### HTTP Server
+### Option B: HTTP Server
 
-The HTTP transport exposes the MCP endpoint at `/mcp` and a health endpoint at `/healthz`. Requests to `/mcp` require bearer-token authentication.
+The HTTP server exposes:
 
-#### 1. Configure authentication
+- MCP endpoint: `http://127.0.0.1:3000/mcp`
+- Health endpoint: `http://127.0.0.1:3000/healthz`
 
-If you have not created `.env`, copy the example:
+These addresses assume `MCP_HOST=127.0.0.1` and `MCP_PORT=3000`.
 
-```powershell
-Copy-Item .env.example .env
+#### 1. Configure Static Authentication
+
+For local HTTP testing, the relevant `.env` settings can be:
+
+```dotenv
+MCP_HOST=127.0.0.1
+MCP_PORT=3000
+MCP_AUTH_MODE=static
+MCP_AUTH_TOKEN=<YOUR_GENERATED_TOKEN>
+MCP_ALLOWED_HOSTS=
 ```
 
-Generate a random token:
+Replace the token placeholder with the generated token. Keep only one entry for each environment variable.
 
-```powershell
-npm.cmd run gen-token
-```
-
-Copy the generated token into `MCP_AUTH_TOKEN` in `.env`. Do not paste the actual token into this README, source code, or public repositories.
-
-#### 2. Start in development mode
+#### 2. Start in Development Mode
 
 ```powershell
 npm.cmd run dev:http
 ```
 
-#### 3. Start in production mode
+#### 3. Start in Production Mode
 
 Stop the development server first, then run:
 
@@ -122,155 +228,361 @@ npm.cmd run build
 npm.cmd run start:http
 ```
 
-By default, the HTTP server listens on `http://127.0.0.1:3000`.
+This starts the compiled HTTP server, `dist/httpServer.js`, in the foreground.
 
-- MCP endpoint: `http://127.0.0.1:3000/mcp`
-- Health endpoint: `http://127.0.0.1:3000/healthz`
+Keep the server terminal open while testing.
 
-Check the health endpoint in a separate PowerShell terminal:
+#### 4. Test the Health Endpoint
+
+Open another PowerShell terminal and run:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:3000/healthz
+curl.exe -i http://127.0.0.1:3000/healthz
 ```
 
-The health check confirms that the HTTP service responds. It does not verify authentication or MCP tool functionality.
+A successful response returns HTTP `200 OK` and:
 
-### HTTP Authentication
-
-Send the configured token in the request header:
-
-```text
-Authorization: Bearer <your-token>
+```json
+{"status":"ok"}
 ```
 
-MCP clients must use compatible request headers. For the tested initialization request, the `Accept` header included both `application/json` and `text/event-stream`.
+The health check confirms that the HTTP service responds. It does not prove that authentication or MCP tool calls work.
 
-Keep the server bound to localhost during local development. Do not expose it publicly until authentication, Host header validation, tunnel configuration, and deployment security have been reviewed.
+In static authentication mode, HTTP requests to `/mcp` require:
 
-### Remote OAuth connector
+```http
+Authorization: Bearer <YOUR_GENERATED_TOKEN>
+```
 
-For Claude Desktop's remote custom connector, the OAuth endpoints and MCP resource must be reachable at stable public HTTPS URLs. The app itself still listens on HTTP; terminate TLS at a trusted HTTPS reverse proxy or tunnel and forward requests to the local HTTP port. Configure the proxy/tunnel to preserve the public `Host` header, or include the forwarded host in `MCP_ALLOWED_HOSTS`.
+Clients must also support the MCP Streamable HTTP protocol.
 
-Set the following in `.env`:
+## Connecting Claude Desktop Through Remote OAuth
+
+For a remote Claude Desktop connector, the HTTP server must be reachable through a public HTTPS URL. A temporary ngrok tunnel can be used for testing and demonstrations.
+
+### 1. Obtain a Public HTTPS Hostname
+
+Open a separate PowerShell terminal and run:
+
+```powershell
+ngrok http 3000
+```
+
+Copy the public HTTPS hostname displayed by ngrok. The forwarding destination should be `http://localhost:3000`.
+
+If the tunnel starts before the HTTP server, requests may temporarily return `502 Bad Gateway`. This is expected until the local server is running.
+
+Keep the tunnel terminal open.
+
+### 2. Configure OAuth
+
+In `.env`, configure the OAuth variables using the actual public hostname:
 
 ```dotenv
+MCP_HOST=127.0.0.1
+MCP_PORT=3000
 MCP_AUTH_MODE=oauth
 MCP_OAUTH_ISSUER_URL=https://your-public-host.example
 MCP_OAUTH_RESOURCE_URL=https://your-public-host.example/mcp
-MCP_OAUTH_OWNER_PASSWORD=replace-with-a-random-password-of-at-least-32-characters
-MCP_OAUTH_STORAGE_DIR=C:\path\outside\workspace\oauth-state
+MCP_OAUTH_OWNER_PASSWORD=<YOUR_LONG_RANDOM_PASSWORD>
+MCP_OAUTH_STORAGE_DIR=C:/Users/your-username/AppData/Local/mcp-file-server/oauth-state
 MCP_ALLOWED_HOSTS=your-public-host.example
 ```
 
-`MCP_OAUTH_ISSUER_URL` must be the public HTTPS origin only. `MCP_OAUTH_RESOURCE_URL` identifies the protected MCP endpoint and must match the public URL used by the connector. OAuth mode does not require `MCP_AUTH_TOKEN`; set `MCP_AUTH_MODE=both` to allow either OAuth access tokens or the existing static token. The default `static` mode is unchanged.
+Replace every placeholder with the appropriate value.
 
-The SDK serves authorization-server metadata, protected-resource metadata, dynamic client registration, token, revocation, and authorization endpoints. The consent page asks for `MCP_OAUTH_OWNER_PASSWORD`; client and token state persists in `MCP_OAUTH_STORAGE_DIR`. Keep that directory out of the served workspace and protect its backups. The issuer/resource URLs must remain stable and match the URLs configured in the HTTPS proxy or tunnel.
+- `MCP_OAUTH_ISSUER_URL` must be the public HTTPS origin without `/mcp`.
+- `MCP_OAUTH_RESOURCE_URL` must identify the public MCP endpoint, normally ending in `/mcp`.
+- The owner password must contain at least 32 characters.
+- The OAuth storage directory must be an absolute path outside the workspace.
+- The allowed host must match the public hostname.
 
-## MCP Inspector
+The public hostname must remain consistent across these settings. If it changes, update `.env` and restart the server before reconnecting.
 
-The standard Inspector script launches the stdio server:
+Do not share real credentials or commit the OAuth storage directory to Git.
+
+### 3. Start the HTTP Server
+
+From the project root:
+
+```powershell
+npm.cmd run build
+npm.cmd run start:http
+```
+
+Keep the HTTP server and ngrok terminals open.
+
+### 4. Check Public Connectivity
+
+In another terminal, run:
+
+```powershell
+curl.exe -i https://your-public-host.example/healthz
+```
+
+Replace the placeholder with the actual public hostname.
+
+A successful response returns HTTP `200 OK` and `{"status":"ok"}`. This verifies reachability, not the complete OAuth flow.
+
+### 5. Add the Connector in Claude Desktop
+
+1. Open Claude Desktop.
+2. Go to **Settings → Connectors**.
+3. Select the option to add a custom connector.
+4. Enter a name, such as `MCP File Server`.
+5. Enter the public HTTPS MCP URL ending in `/mcp`.
+6. Complete the OAuth authorization flow.
+7. Follow the consent page instructions and provide the configured owner password when requested.
+8. Enable the connector for your chat and test an MCP tool.
+
+The available interface and connector options may vary by Claude account and version. Follow the remote custom connector workflow rather than adding the remote URL directly to `claude_desktop_config.json`.
+
+### Testing on Another Computer
+
+A tester who clones the repository must configure their own `.env` file using `.env.example` as a reference, choose a workspace, configure authentication, and start the server.
+
+For remote Claude Desktop testing, the server must be reachable through an accessible public HTTPS endpoint. The public hostname must match the OAuth configuration and allowed-host settings.
+
+Your local `.env`, OAuth credentials, and active ngrok tunnel are not included when the repository is cloned. The tester must configure their own environment and run their own server and tunnel, unless you specifically arrange access to a separately maintained demo endpoint.
+
+## Using PM2 (Optional)
+
+PM2 can manage the HTTP server process without requiring the server to remain attached to a foreground terminal.
+
+Install PM2 if necessary:
+
+```powershell
+npm.cmd install --global pm2
+```
+
+Build the project and start the HTTP server from the project root:
+
+```powershell
+npm.cmd run build
+pm2.cmd start dist/httpServer.js --name mcp-file-server
+```
+
+Check the process:
+
+```powershell
+pm2.cmd status
+```
+
+The process should show `online`.
+
+View recent logs:
+
+```powershell
+pm2.cmd logs mcp-file-server --lines 50
+```
+
+Restart or stop the process:
+
+```powershell
+pm2.cmd restart mcp-file-server
+pm2.cmd stop mcp-file-server
+```
+
+Use either the foreground server or the PM2-managed server for a given port, not both simultaneously.
+
+## Testing the Project
+
+Run these commands from the repository root:
+
+```powershell
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+```
+
+To run the HTTP-specific tests:
+
+```powershell
+npm.cmd test -- tests/http.test.ts
+```
+
+To launch MCP Inspector with the standard stdio server:
 
 ```powershell
 npm.cmd run build
 npm.cmd run inspect
 ```
 
-Connect to the server, open the Tools section, and try the available tools.
+For HTTP testing, open MCP Inspector separately and connect it to the running `/mcp` endpoint using the authentication method configured for that server.
 
-Suggested checks:
+### Manual Claude Desktop Test
 
-- Run `repo_map`.
-- Use `write_file` and then `read_file` on a test file.
-- Test `str_replace`.
-- Try a path such as `../` and verify that the sandbox rejects it.
+First, place a small test file in the configured workspace.
 
-For HTTP Inspector testing, connect to the running HTTP server using its configured endpoint and bearer-token authentication. The following tools have been tested successfully:
+Ask Claude:
 
-- `list_files` — listed workspace entries.
-- `read_file` — read a sample Markdown file.
-- `search_files` — found Markdown files by pattern.
-- `search_code` — found matching text in a Markdown file.
-- `repo_map` — returned the workspace tree and file counts.
-- `git_status` — verified both a clean repository and untracked-file detection.
+> Use the MCP File Server's `list_files` tool to list the files in the workspace root. Do not create, edit, or delete any files.
 
-## Tool Catalog
+Then test reading:
+
+> Use the MCP File Server's `read_file` tool to read `assignment.txt` from the workspace root. Summarize the contents without modifying the file.
+
+Replace `assignment.txt` with a file that actually exists in the workspace.
+
+For write tests, use a disposable test file and verify its contents on disk. Do not start with destructive operations against important files.
+
+## Available MCP Tools
+
+The server exposes nine tools.
+
+| Tool | Purpose |
+|---|---|
+| `list_files` | Lists workspace files and directories |
+| `read_file` | Reads supported text files and returns a SHA-256 version |
+| `write_file` | Creates or updates files |
+| `str_replace` | Replaces an exact text match |
+| `delete_file` | Deletes permitted files after confirmation |
+| `search_files` | Searches for files using a glob-style pattern |
+| `search_code` | Searches supported text-file contents |
+| `repo_map` | Displays the workspace tree and file counts |
+| `git_status` | Checks Git status when the workspace is a Git repository |
 
 All tool inputs are validated using Zod schemas.
 
-| Tool | Category | Inputs | Notes |
-|---|---|---|---|
-| `list_files` | Read | `path="."`, `recursive=false`, `max_entries=200` (1–1000) | Lists entries without following symlinks |
-| `read_file` | Read | `path`, `max_bytes=100000` (1–1048576) | Returns a SHA-256 version; text files up to 1 MiB |
-| `write_file` | Write | `path`, `content` (up to 1 MiB), optional `if_version` | Supports `"new"` or a SHA-256 version; writes atomically |
-| `str_replace` | Write | `path`, `old_str`, `new_str`, optional `if_version` | Requires `old_str` to match exactly once |
-| `delete_file` | Destructive | `path`, `confirm: true`, optional `if_version` | Deletes files only; audit logging must succeed first |
-| `search_files` | Read | `pattern`, `path="."`, `max_results=100` (1–500) | Supports `*`, `**`, and `?`; case-insensitive |
-| `search_code` | Read | `query`, `path="."`, optional `glob`, `case_sensitive=false`, `max_results=50` (1–200) | Skips binary files, files over 1 MiB, `.git`, and `node_modules` |
-| `repo_map` | Read | `path="."`, `max_depth=3` (1–6), `max_entries=300` (1–1000) | Returns an indented tree and extension counts |
-| `git_status` | Read | None | Uses a fixed, read-only Git command when the workspace root is a Git repository |
+### Important File-Format Note
 
-List-like results are bounded. Results indicate when an output limit has been reached.
+The current `read_file` tool supports text-file reading up to 1 MiB. Examples of text files include `.txt`, `.md`, `.js`, `.ts`, and `.json`.
 
-## Sandbox and Security Rules
+PDF text extraction is not documented as a supported feature in this implementation. A PDF can be stored in the workspace, but the current tools should not be described as PDF readers unless that capability is implemented and tested.
 
-1. All client-provided file paths pass through the sandbox resolver in `src/security/sandbox.ts`.
-2. Absolute paths, Windows drive paths, UNC paths, and null bytes are rejected.
-3. Paths are normalized and checked to ensure they remain inside the configured workspace.
-4. Symlinks are resolved and checked against the real workspace root. Dangling symlinks are refused.
-5. Directory traversal does not follow symlinks.
-6. Mutating operations use additional rules in `src/security/policy.ts`. The workspace root and `.git` contents cannot be modified through the tools.
-7. Handoff-file deletion protection is implemented in M2.
-8. Client-facing errors use short messages and avoid exposing stack traces or host filesystem paths.
-9. Mutating operations are recorded in an audit log. The audit log records metadata rather than file contents.
+## Multi-Session Handoff
+
+The project supports file-based handoff using `PROJECT_STATE.md`.
+
+A session can save the relevant project context and next task in this file. A separate client session can read the same file and continue the work, provided that both sessions use the same workspace.
+
+Example prompt:
+
+> Read `PROJECT_STATE.md` using the MCP File Server. Summarize the current project state and identify the next task. Do not modify any files.
+
+This is file-based handoff, not automatic sharing of conversation history. The automated HTTP tests include a cross-session handoff test; the final milestone demonstration remains a separate verification activity.
+
+## Sandbox and Security
+
+The server applies security checks to client-provided file paths and file operations.
+
+Implemented protections include:
+
+- Normalizing paths and restricting access to the configured workspace.
+- Rejecting absolute paths, Windows drive paths, UNC paths, and null bytes.
+- Checking symbolic links against the real workspace root.
+- Avoiding symlink traversal during directory listing.
+- Protecting the workspace root, `.git` contents, and designated handoff files from prohibited modifications.
+- Validating tool inputs with Zod.
+- Using audit logging for mutating operations.
+- Returning concise client-facing errors without exposing stack traces or host filesystem paths.
+
+Additional precautions:
+
+- Keep `.env`, authentication secrets, and OAuth state out of Git.
+- Keep audit logs and OAuth storage outside the workspace.
+- Use a dedicated workspace containing only the files needed for the task.
+- Review tool requests before allowing write or delete operations.
+- Keep authentication enabled for remote connections.
+- Remember that an HTTPS tunnel provides connectivity, not automatic security.
 
 These protections reduce risk but do not eliminate every possible filesystem or deployment threat.
 
 ## Concurrency and Version Checks
 
-`read_file` returns a SHA-256 `version`. Passing that value through `if_version` allows `write_file`, `str_replace`, and `delete_file` to detect whether a file has changed since it was read.
+`read_file` returns a SHA-256 file version. Passing that value through `if_version` allows `write_file`, `str_replace`, and `delete_file` to detect certain changes made since the file was read.
 
-The server uses per-file locking within a single process for version-checked mutations. These locks do not coordinate with external processes that edit the same files directly.
+The server uses per-file locking within a single process for version-checked mutations. These locks do not coordinate with external editors or other processes that modify the same files directly.
 
-## Project Layout
+## Troubleshooting
 
-```text
-src/
-  config/       Environment and HTTP configuration
-  security/     Sandbox and mutation policy
-  tools/        MCP tool implementations and registration
-  utils/        Shared file, lock, audit, glob, walk, and error utilities
-  http/         HTTP application and authentication
-  createServer.ts
-  server.ts     Standard stdio entry point
-  httpServer.ts HTTP entry point
+**The server does not start**
 
-tests/          Vitest tests
-workspace/      Default sandbox workspace
-```
+Check the terminal output, `.env` settings, and whether another process is using the configured port.
+
+**ngrok returns `502 Bad Gateway`**
+
+Confirm that the local server is running and that the tunnel points to the configured port. If `MCP_PORT=3000`, use `ngrok http 3000`.
+
+**ngrok reports that the endpoint is already online**
+
+Stop the existing tunnel with `Ctrl+C` in its terminal before starting another tunnel with the same endpoint.
+
+**`403 Forbidden host`**
+
+Check `MCP_ALLOWED_HOSTS` against the hostname used by the request. The allow-list contains host names, not full URLs. Restart the server after changing `.env`.
+
+**Claude Desktop cannot connect**
+
+Confirm that the server and tunnel are running, the connector URL ends in `/mcp`, and the OAuth URLs match the public hostname.
+
+**Claude can list files but cannot read one**
+
+Check that the file exists within the configured workspace, that its exact filename is correct, and that it is a supported text file within the size limit.
+
+**The wrong files appear**
+
+Check `WORKSPACE_ROOT` and restart the server after changing it. Use `list_files` to verify the active workspace.
+
+**The health check works but MCP tools fail**
+
+The health endpoint verifies HTTP availability only. Use the MCP Inspector or connected client to test initialization, tool listing, and actual tool calls.
 
 ## Known Limitations
 
-- A local process that modifies the workspace concurrently may create a time-of-check/time-of-use (TOCTOU) race involving filesystem paths.
-- Version checks and locks operate within the server process; they do not coordinate with external file editors.
-- Operations on symlinks that remain inside the workspace can act on their targets.
-- Some unusual Windows filesystem naming behaviors may not be fully covered.
-- The custom glob implementation does not support every glob syntax, such as braces or character classes.
-- The standard stdio mode and HTTP mode have different connection and authentication requirements.
-- A bearer token alone does not make public deployment safe. Network exposure, Host header validation, tunnel settings, and process management require separate verification.
-- Tunnel deployment, PM2 operation, and HTTP Inspector verification have not yet been confirmed.
+- The server has not been deployed to permanent public hosting; remote demonstrations have used a temporary ngrok tunnel.
+- Remote access depends on the local server and tunnel remaining active.
+- PDF text extraction is not documented as implemented.
+- Version checks and locks do not coordinate with external editors or processes.
+- Some unusual Windows filesystem behaviors may not be fully covered.
+- The custom glob implementation does not support every glob syntax, including braces and character classes.
+- stdio and HTTP transports have different connection and authentication requirements.
+- The final M5 multi-session demonstration remains pending.
 
-## Development Commands
+## Project Structure
 
-```powershell
-npm.cmd run typecheck
-npm.cmd test
-npm.cmd run build
-npm.cmd run dev
-npm.cmd run dev:http
+```text
+mcp-file-server/
+├── dist/                 Compiled JavaScript output
+├── logs/                 Local application logs
+├── node_modules/         Installed project dependencies
+├── src/
+│   ├── config/           Environment and HTTP configuration
+│   ├── http/             HTTP application and authentication handling
+│   ├── oauth/            OAuth provider and token storage
+│   ├── security/         Workspace sandbox and file mutation policies
+│   ├── tools/            Implementations of the 9 MCP tools
+│   ├── utils/            Shared filesystem and logging utilities
+│   ├── createServer.ts   Shared MCP server initialization
+│   ├── httpServer.ts     HTTP transport entry point
+│   └── server.ts         Standard input/output (stdio) entry point
+├── tests/                Automated tests for project functionality
+├── workspace/            Default sandbox workspace
+│   └── sample-project/   Sample files for testing file operations
+│       ├── index.js      Sample JavaScript source file
+│       ├── README.md     Sample project documentation
+│       └── .gitkeep      Placeholder for Git tracking
+├── .env                  Local environment variables
+├── .env.example          Example environment configuration
+├── .gitignore            Files excluded from Git tracking
+├── ecosystem.config.cjs  PM2 process management configuration
+├── package-lock.json     Locked dependency versions
+├── package.json          Project metadata, dependencies, and scripts
+├── README.md             Setup instructions and project documentation
+└── tsconfig.json         TypeScript compiler configuration
 ```
 
-Use `npm.cmd` in Windows PowerShell if the execution policy prevents running `npm.ps1` directly.
+## References
+
+- [Model Context Protocol Documentation](https://modelcontextprotocol.io/docs/getting-started/intro)
+- [MCP TypeScript SDK Documentation](https://ts.sdk.modelcontextprotocol.io/)
+- [Anthropic: Getting Started with Custom Connectors Using Remote MCP](https://support.anthropic.com/en/articles/11175166-about-custom-integrations-using-remote-mcp)
+- [Anthropic: Building Custom Connectors via Remote MCP Servers](https://support.anthropic.com/en/articles/11503834-building-custom-integrations-via-remote-mcp-servers)
+
+---
 
 ## Project Status
 
-The local M2 test suite and the initial M3 HTTP authentication checks have passed. Remaining work includes completing and verifying deployment, finalizing the M4 handoff protocol, and conducting the M5 multi-session demonstration. Update this README when new checks have actually been completed.
+The MCP File Server has implemented the core file tools, sandboxing, HTTP transport, authentication, and basic handoff functionality. Recorded tests and local demonstrations have verified the development workflow and a remote Claude Desktop connection.
+
+The remaining milestone work is the final M5 multi-session demonstration. Update this README whenever implementation, test results, configuration, or milestone status changes.

@@ -219,16 +219,21 @@ describe("HTTP end-to-end with the official MCP client", () => {
     }
   });
 
-  it("shares files between two separate client sessions (handoff precondition)", async () => {
+  it("hands off PROJECT_STATE.md context between two separate client sessions", async () => {
     const a = newClient(TOKEN);
     const b = newClient(TOKEN);
     await a.client.connect(a.transport);
     await b.client.connect(b.transport);
     try {
-      const write = await a.client.callTool({ name: "write_file", arguments: { path: "handoff.txt", content: "from session A" } });
+      const nextTask = "NEXT TASK: Add an integration test for project state handoff.";
+      const write = await a.client.callTool({
+        name: "write_file",
+        arguments: { path: "PROJECT_STATE.md", content: `Project context from Session A.\n${nextTask}\n` },
+      });
       expect(write.isError).not.toBe(true);
-      const read = await b.client.callTool({ name: "read_file", arguments: { path: "handoff.txt" } });
-      expect(JSON.parse((read.content as { text: string }[])[0]?.text ?? "{}").content).toBe("from session A");
+      const read = await b.client.callTool({ name: "read_file", arguments: { path: "PROJECT_STATE.md" } });
+      expect(read.isError).not.toBe(true);
+      expect(JSON.parse((read.content as { text: string }[])[0]?.text ?? "{}").content).toContain(nextTask);
     } finally {
       await a.client.close();
       await b.client.close();
